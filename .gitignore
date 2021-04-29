@@ -147,3 +147,11 @@ static
 *.iml
 data-secret
 model/glove.6B.100d.txt
+model/mul_leakyrelu_0.1drop_194hidden_0.0001lr_40batch_epoch_9.pt
+model/mul_leakyrelu_0.1drop_194hidden_0.0001lr_40batch_2lstmLayer_1clipGrad_epoch_9_acc_0.6729999999999999.pt
+model/mul_leakyrelu_0.1drop_194hidden_0.0001lr_40batch_2lstmLayer_5clipGrad_epoch_11_acc_0.6520.pt
+model/glove.6B.300d.txt
+.gitignore
+model/mul_leakyrelu_0.1drop_128hidden_0.0001lr_40batch_1lstmLayer_5clipGrad_epoch_11_acc_0.6620.pt
+.gitignore
+model/mul_leakyrelu_0.1drop_128hidden_0.0001lr_40batch_1lstmLayer_5clipGrad_epoch_18_acc_0.6290.pt
