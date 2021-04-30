@@ -28,19 +28,9 @@ def build_model(device: str) -> Model:
     # STUDENT: return StudentModel()
     # STUDENT: your model MUST be loaded on the device "device" indicates
     model = StudentModel(device)
-    '''glove_embed = GloVEEmbedding()
-    word_vectors = glove_embed.get_word_vectors()
-    word_index,vectors_store = create_vocabulary(word_vectors)
-    lm = LoadModel(vectors_store)'''
 
     state_dict = torch.load("./model/difference_leakyrelu__epoch_24.pt", map_location=torch.device(device))
-    # create new OrderedDict that does not contain `module.`
-    '''from collections import OrderedDict
-    new_state_dict = OrderedDict()
-    for k, v in state_dict.items():
-        name = k[7:] # remove `module.`
-        new_state_dict[name] = v
-    # load params'''
+    # load params
     model.load_state_dict(state_dict)
 
     model.eval()

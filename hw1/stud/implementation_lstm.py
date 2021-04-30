@@ -20,7 +20,7 @@ torch.manual_seed(42)
 np.random.seed(42)
 
 WORDS_LIMIT = 400_000
-WE_LENGTH = 300
+WE_LENGTH = 100
 
 
 def build_model(device: str) -> Model:
@@ -29,7 +29,7 @@ def build_model(device: str) -> Model:
     model = StudentModel(device)
 
 
-    state_dict = torch.load("./model/mul_leakyrelu_0.1drop_194hidden_0.0001lr_40batch_2lstmLayer_5clipGrad_epoch_11_acc_0.6520.pt", map_location=torch.device(device))
+    state_dict = torch.load("./model/diff_leakyrelu_0.1drop_194hidden_0.0001lr_40batch_2lstmLayer_5clipGrad_epoch_9_acc_0.6410.pt", map_location=torch.device(device))
 
     model.load_state_dict(state_dict)
 
@@ -61,7 +61,7 @@ class GloVEEmbedding():
         self.word_vectors = dict()
 
     def get_word_vectors(self):
-        with open('./model/glove.6B.300d.txt') as f:
+        with open('./model/glove.6B.'+str(WE_LENGTH)+'d.txt') as f:
             next(f)  # skip header
             for i, line in tqdm(enumerate(f), total=WORDS_LIMIT):
                 if i == WORDS_LIMIT:
@@ -79,11 +79,14 @@ class GloVEEmbedding():
 def create_vocabulary(word_vectors):
     word_index = dict()
     vectors_store = []
-
+    
     # pad token, index = 0
     vectors_store.append(torch.rand(int(WE_LENGTH)))
+    word_index["PAD"] = len(vectors_store)
 
     # unk token, index = 1
+    vectors_store.append(torch.rand(int(WE_LENGTH)))
+    # sep token, index = 2
     vectors_store.append(torch.rand(int(WE_LENGTH)))
 
     for word, vector in word_vectors.items():
@@ -255,7 +258,7 @@ class StudentModel(Model, nn.Module):
         summary_vectors_sent2 = flattened_out[summary_vectors_indices_sent2]
         
         #summary_vectors = torch.mean(torch.stack((summary_vectors_sent1,summary_vectors_sent2)), dim = 0)
-        summary_vectors = summary_vectors_sent1 * summary_vectors_sent2
+        summary_vectors = summary_vectors_sent1 - summary_vectors_sent2
         
         # now we can classify the sentences with a feedforward pass on the summary
         # vectors
