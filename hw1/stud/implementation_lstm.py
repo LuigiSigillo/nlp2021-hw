@@ -19,8 +19,9 @@ nltk.download('punkt')
 torch.manual_seed(42)
 np.random.seed(42)
 
-WORDS_LIMIT = 400_000
+WORDS_LIMIT = 140_000
 WE_LENGTH = 100
+
 
 
 def build_model(device: str) -> Model:
@@ -28,9 +29,8 @@ def build_model(device: str) -> Model:
     # STUDENT: your model MUST be loaded on the device "device" indicates
     model = StudentModel(device)
 
-
-    state_dict = torch.load("./model/diff_leakyrelu_0.1drop_194hidden_0.0001lr_40batch_2lstmLayer_5clipGrad_epoch_9_acc_0.6410.pt", map_location=torch.device(device))
-
+    state_dict = torch.load("./model/difference_leakyrelu__epoch_24.pt", map_location=torch.device(device))
+    # load params
     model.load_state_dict(state_dict)
 
     model.eval()
@@ -61,7 +61,7 @@ class GloVEEmbedding():
         self.word_vectors = dict()
 
     def get_word_vectors(self):
-        with open('./model/glove.6B.'+str(WE_LENGTH)+'d.txt') as f:
+        with open('./model/glove.6B.100d.txt') as f:
             next(f)  # skip header
             for i, line in tqdm(enumerate(f), total=WORDS_LIMIT):
                 if i == WORDS_LIMIT:
@@ -79,14 +79,11 @@ class GloVEEmbedding():
 def create_vocabulary(word_vectors):
     word_index = dict()
     vectors_store = []
-    
+
     # pad token, index = 0
     vectors_store.append(torch.rand(int(WE_LENGTH)))
-    word_index["PAD"] = len(vectors_store)
 
     # unk token, index = 1
-    vectors_store.append(torch.rand(int(WE_LENGTH)))
-    # sep token, index = 2
     vectors_store.append(torch.rand(int(WE_LENGTH)))
 
     for word, vector in word_vectors.items():
@@ -97,19 +94,17 @@ def create_vocabulary(word_vectors):
     vectors_store = torch.stack(vectors_store)
     return word_index,vectors_store
 
+
 glove_embed = GloVEEmbedding()
 word_vectors = glove_embed.get_word_vectors()
 word_index,vectors_store = create_vocabulary(word_vectors)
-
-
-
 
 def sentence2indices(sentence: str) -> torch.Tensor:
     return torch.tensor([word_index[word] for word in sentence.split(' ')], dtype=torch.long)
 
 class Preprocessing():
 
-    def preprocess(self,json_string):
+    def preprocess(self,json_string,phrase2vector):
         single_json = json_string
 
         keyword = single_json['sentence1'][int(single_json['start1']):int(single_json['end1'])]
@@ -117,42 +112,28 @@ class Preprocessing():
         lemma = single_json['lemma']
 
         sep = " SEP "
-        
         lemmatized1 = self.use_only_lemma(single_json['sentence1'],lemma,keyword)
         lemmatized2 = self.use_only_lemma(single_json['sentence2'],lemma,keyword2)
+
+        sentence =  self.remove_stopwords(lemmatized1) + sep + self.remove_stopwords(lemmatized2)
         
-        lemmatized1_without_stop = self.remove_stopwords(lemmatized1,lemma)
-        lemmatized2_without_stop = self.remove_stopwords(lemmatized2,lemma)
-        
-        sentence =  lemmatized1_without_stop + sep + lemmatized2_without_stop
-        # substitue digits with "number"
-        sentence = self.handle_digits(sentence)
         indices = self.get_kwd_indices(sentence,[keyword,keyword2,lemma])
         
-        vector = sentence2indices(sentence)
-
-
+        vector = phrase2vector(sentence)
+        
         if vector is None:
-            pass
+            import logging
+            logging.error(sentence)
             vector = torch.tensor(np.random.random(int(WE_LENGTH)),dtype=torch.float)
-                
-        if len(indices)!=3:
-            print(sentence,indices, keyword) 
-            while len(indices)<3:
-                indices.append(10)                    
-                
-        return (vector,indices)
+        while len(indices)<3:
+            indices.append(5)
+        
+        return self.rnn_collate_fn([(vector,indices)])
 
-    def remove_stopwords(self,sent,lemma):
+    def remove_stopwords(self,sent):
         stop_words = set(stopwords.words('english'))
-        try:
-            stop_words.remove(lemma)
-        except:
-            pass
         # remove punkt
-        others = "–" +"—" + "−" + "’" + "”" + "“"
-        str_punkt = string.punctuation+ others
-        translator = str.maketrans(str_punkt, ' '*len(str_punkt)) 
+        translator = str.maketrans(string.punctuation, ' '*len(string.punctuation)) 
         word_tokens = word_tokenize(sent.translate(translator)) 
         
         filtered_sentence = [w for w in word_tokens if not w.lower() in stop_words]
@@ -162,9 +143,6 @@ class Preprocessing():
         filtered_sentence = [w if not w == keyword else lemma for w in sent.split(" ") ]
         return " ".join(filtered_sentence)
 
-    def handle_digits(self,sent):
-        filtered_sentence = [w if w.isalpha() else "number" for w in sent.split(" ") ]
-        return " ".join(filtered_sentence)       
     
     def get_kwd_indices(self,sentence,keywords):
         i = 0
@@ -184,23 +162,41 @@ class Preprocessing():
             i += 1
         return j
 
+    def rnn_collate_fn(self,data_elements: List[Tuple[torch.Tensor, torch.Tensor]]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+
+        X = [de[0] for de in data_elements]  # list of index tensors
+        # to implement the many-to-one strategy
+        X_lengths = torch.tensor([x.size(0) for x in X], dtype=torch.long)
+        
+
+        X = torch.nn.utils.rnn.pad_sequence(X, batch_first=True, padding_value=0)  #  shape (batch_size x max_seq_len)
+
+        keyword_position = [de[1] for de in data_elements] # list of tuples indices where keyword is [[1st sent, 2nd sent]]
+
+
+        keyword_position = torch.tensor(keyword_position)
+
+        return X, X_lengths, keyword_position
+
 class StudentModel(Model, nn.Module):
     # STUDENT: construct here your model
     # this class should be loading your weights and vocabulary
     def __init__(
         self,
         device: str,
-        n_hidden=194,
-        drop_prob= 0.1,
+        n_hidden=128,
+        drop_prob= 0.3,
         bidir=True,
     ) -> None:
         super().__init__()
+
+
 
         # embedding layer
         self.embedding = torch.nn.Embedding.from_pretrained(vectors_store)
         self.n_hidden = n_hidden
         # recurrent layer
-        self.rnn = torch.nn.LSTM(input_size=vectors_store.size(1), hidden_size=n_hidden, num_layers=2, batch_first=True, bidirectional=bidir)
+        self.rnn = torch.nn.LSTM(input_size=vectors_store.size(1), hidden_size=n_hidden, num_layers=1, batch_first=True, bidirectional=bidir)
         self.dropout = nn.Dropout(drop_prob)
 
         # classification 
@@ -258,7 +254,7 @@ class StudentModel(Model, nn.Module):
         summary_vectors_sent2 = flattened_out[summary_vectors_indices_sent2]
         
         #summary_vectors = torch.mean(torch.stack((summary_vectors_sent1,summary_vectors_sent2)), dim = 0)
-        summary_vectors = summary_vectors_sent1 - summary_vectors_sent2
+        summary_vectors = summary_vectors_sent1 * summary_vectors_sent2
         
         # now we can classify the sentences with a feedforward pass on the summary
         # vectors
@@ -272,6 +268,11 @@ class StudentModel(Model, nn.Module):
         pred = torch.sigmoid(logits)
 
         result = {'logits': logits, 'pred': pred} #'hidden':hidden}
+        
+        # compute loss
+        if y is not None:
+            loss = self.loss(pred, y)
+            result['loss'] = loss
         
         return result
         
@@ -287,30 +288,12 @@ class StudentModel(Model, nn.Module):
     def predict(self, sentence_pairs: List[Dict]) -> List[str]:
         # STUDENT: implement here your predict function
         # remember to respect the same order of sentences!
+        predictions = []
         prep = Preprocessing()
-
-        senteces_preprocessed = [prep.preprocess(elem) for elem in sentence_pairs]
-
-        X, X_lengths, keyword_position = self.rnn_collate_fn(senteces_preprocessed)
-
-        forward_out = self(X, X_lengths, keyword_position)
-
-        predictions = ["True" if pred>0.5 else "False" for pred in forward_out['pred']]
-
-        return predictions
-
-    def rnn_collate_fn(self,data_elements: List[Tuple[torch.Tensor, torch.Tensor]]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        X = [de[0] for de in data_elements]  # list of index tensors
-        # to implement the many-to-one strategy
-        X_lengths = torch.tensor([x.size(0) for x in X], dtype=torch.long)
-        
-
-        X = torch.nn.utils.rnn.pad_sequence(X, batch_first=True, padding_value=0)  #  shape (batch_size x max_seq_len)
-
-        keyword_position = [de[1] for de in data_elements] # list of tuples indices where keyword is [[1st sent, 2nd sent]]
-
-
-        keyword_position = torch.tensor(keyword_position)
-
-        return X, X_lengths, keyword_position
-
+        for phrase in sentence_pairs:
+            X, X_lengths, keyword_position = prep.preprocess(phrase,sentence2indices)
+            forward_out = self(X.to(self.device), X_lengths.to(self.device), keyword_position.to(self.device))  
+            '''for i,prob in enumerate(forward_out["pred"]):
+                print("\n {}".format( prob) )'''
+            predictions.append((forward_out['pred']>0.5).float().cpu())
+        return ["True" if p == torch.tensor(1, dtype=float) else "False" for p in predictions]        

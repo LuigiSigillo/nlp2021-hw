@@ -21,7 +21,7 @@ torch.manual_seed(42)
 np.random.seed(42)
 
 WORDS_LIMIT = 400_000
-WE_LENGTH = 50
+WE_LENGTH = 300
 
 class GloVEEmbedding():
 
@@ -55,7 +55,7 @@ def create_vocabulary(word_vectors):
     vectors_store.append(word_vectors["UNK"])
 
     # sep token, index = 2
-    vectors_store.append(word_vectors["SEP"])
+    #vectors_store.append(word_vectors["SEP"])
 
     for word, vector in word_vectors.items():
         word_index[word] = len(vectors_store)
@@ -73,10 +73,10 @@ def build_model(device: str) -> Model:
     word_vectors = glove_embed.get_word_vectors()
     word_index, vectors_store = create_vocabulary(word_vectors)
     
-    n_hidden, drop_prob, bidir, n_layer_lstm = 82, 0.25, True, 2
+    n_hidden, drop_prob, bidir, n_layer_lstm = 98, 0.15, True, 2
     model = StudentModel(device,vectors_store, word_index, n_hidden, drop_prob,bidir, n_layer_lstm)
     
-    model.load_state_dict(torch.load("model/diff_leakyrelu_0.2drop_82hidden_0.0001lr_40batch_2lstmLayer_1clipGrad_epoch_15_acc_0.6740.pt", map_location=torch.device(device)))
+    model.load_state_dict(torch.load("model/mul_leakyrelu_0.1drop_194hidden_0.0001lr_40batch_2lstmLayer_1clipGrad_epoch_9_acc_0.673.pt", map_location=torch.device(device)))
     
     model.eval()
 
