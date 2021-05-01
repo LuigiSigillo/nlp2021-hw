@@ -80,7 +80,9 @@ class StudentModel(Model,nn.Module):
         self.word_index, self.vectors_store = self.create_vocabulary(self.word_vectors)
 
         # embedding layer
-        self.embedding = torch.nn.Embedding(len(self.vectors_store),WE_LENGTH)#.from_pretrained(self.vectors_store)
+        #self.embedding = torch.nn.Embedding(len(self.vectors_store),WE_LENGTH)#.from_pretrained(self.vectors_store)
+        self.embedding = torch.nn.Embedding.from_pretrained(self.vectors_store)
+
         self.n_hidden = n_hidden
         # recurrent layer
         self.rnn = torch.nn.LSTM(input_size=self.vectors_store.size(1), hidden_size=n_hidden, num_layers=2, batch_first=True, bidirectional=bidir)
@@ -158,7 +160,7 @@ class StudentModel(Model,nn.Module):
         
         pred = torch.sigmoid(logits)
 
-        result = {'logits': logits, 'pred': pred} #'hidden':hidden}
+        result = {'logits': logits, 'pred': pred} 
         
         return result
         
@@ -168,38 +170,44 @@ class StudentModel(Model,nn.Module):
     def get_indices_keyword(self,indices_keywords,summary,sent_num):
         #[   0,   57,  114,  171,  228] = summary
         #[ [ 6, 21],[ 4, 22],[ 6, 21],[ 4, 22] ] = indices_keywords
-        tens_idx = torch.tensor([item[sent_num] for item in indices_keywords]).to(self.device)
+        logging.error(indices_keywords)
+        logging.error(sent_num)
+        #tens_idx = torch.tensor([item[sent_num] for item in indices_keywords]).to(self.device)
+        tens_idx = torch.tensor(indices_keywords[sent_num]).to(self.device)
         return tens_idx + summary
 
 
-###############################################################à
-    def preprocess(self,json_string,phrase2vector):
-        single_json = json_string
+########################### PREPROCESSING ####################################à
+    def preprocess(self,json_list,phrase2vector):
+        vectors = []
+        indices_list = []
+        for single_json in json_list:
 
-        keyword = single_json['sentence1'][int(single_json['start1']):int(single_json['end1'])]
-        keyword2 = single_json['sentence2'][int(single_json['start2']):int(single_json['end2'])]
-        lemma = single_json['lemma']
+            keyword = single_json['sentence1'][int(single_json['start1']):int(single_json['end1'])]
+            keyword2 = single_json['sentence2'][int(single_json['start2']):int(single_json['end2'])]
+            lemma = single_json['lemma']
 
-        sep = " SEP "
-        lemmatized1 = self.use_only_lemma(single_json['sentence1'],lemma,keyword)
-        lemmatized2 = self.use_only_lemma(single_json['sentence2'],lemma,keyword2)
+            sep = " SEP "
+            lemmatized1 = self.use_only_lemma(single_json['sentence1'],lemma,keyword)
+            lemmatized2 = self.use_only_lemma(single_json['sentence2'],lemma,keyword2)
 
-        sentence =  self.remove_stopwords(lemmatized1) + sep + self.remove_stopwords(lemmatized2)
-        sentence = self.handle_digits(sentence)
+            sentence =  self.remove_stopwords(lemmatized1) + sep + self.remove_stopwords(lemmatized2)
+            sentence = self.handle_digits(sentence)
 
-        indices = self.get_kwd_indices(sentence,[keyword,keyword2,lemma])
-        
-        vector = phrase2vector(sentence)
-        
-        if vector is None:
-            logging.error(sentence)
-            vector = torch.tensor(np.random.random(int(WE_LENGTH)),dtype=torch.float)
-        while len(indices)<3:
-            logging.error(sentence)
-            indices.append(5)
-        
-        return self.rnn_collate_fn([(vector,indices)])
-
+            indices = self.get_kwd_indices(sentence,[keyword,keyword2,lemma])
+            
+            vector = phrase2vector(sentence)
+            
+            if vector is None:
+                logging.error(sentence)
+                vector = torch.tensor(np.random.random(int(WE_LENGTH)),dtype=torch.float)
+            while len(indices)<3:
+                logging.error(sentence)
+                indices.append(5)
+            vectors.append(vector)
+            indices_list.append(indices)
+            #return self.rnn_collate_fn([(vector,indices)])
+        return vectors, indices_list
 
     def handle_digits(self,sent):
             filtered_sentence = [w if w.isalpha() else "number" for w in sent.split(" ") ]
@@ -249,7 +257,6 @@ class StudentModel(Model,nn.Module):
         X = [de[0] for de in data_elements]  # list of index tensors
         
         # to implement the many-to-one strategy
-        #X_lengths = torch.tensor([x.size(0) for x in X], dtype=torch.long)
         
         X = torch.nn.utils.rnn.pad_sequence(X, batch_first=True, padding_value=0)  #  shape (batch_size x max_seq_len)
         
@@ -264,10 +271,13 @@ class StudentModel(Model,nn.Module):
         # STUDENT: implement here your predict function
         # remember to respect the same order of sentences!
         predictions = []
-        for phrase in sentence_pairs:
-            X, keyword_position = self.preprocess(phrase,self.sentence2indices)
-            forward_out = self(X.to(self.device), keyword_position.to(self.device))  
-            predictions.append((forward_out['pred']>0.5).float().cpu())
-        return ["True" if p == torch.tensor(1, dtype=float) else "False" for p in predictions]        
-
+        preprocessed_sample, kwds_pos = self.preprocess(sentence_pairs,self.sentence2indices)
+        for i, phrase in enumerate(preprocessed_sample):
+            X = torch.unsqueeze(phrase, 0).to(self.device)
+            keyword_position = kwds_pos[i]
+            forward_out = self(X, keyword_position)  
+            #predictions.append((forward_out['pred']>0.5).float().cpu())
+            predictions.append('True' if forward_out['pred'] > 0.5 else 'False')
+        #return ["True" if p == torch.tensor(1, dtype=float) else "False" for p in predictions]        
+        return predictions
 
