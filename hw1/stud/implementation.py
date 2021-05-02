@@ -73,10 +73,10 @@ def build_model(device: str) -> Model:
     word_vectors = glove_embed.get_word_vectors()
     word_index, vectors_store = create_vocabulary(word_vectors)
     
-    n_hidden, drop_prob, bidir, n_layer_lstm = 98, 0.15, True, 2
+    n_hidden, drop_prob, bidir, n_layer_lstm = 82, 0.15, True, 2
     model = StudentModel(device,vectors_store, word_index, n_hidden, drop_prob,bidir, n_layer_lstm)
     
-    model.load_state_dict(torch.load("model/diff_leakyrelu_0.15drop_98hidden_0.0001lr_40batch_2lstmLayer_4clipGrad_epoch_14_acc_0.6760-0.656.pt", map_location=torch.device(device)))
+    model.load_state_dict(torch.load("model/mul_leakyrelu_0.15drop_82hidden_0.0001lr_40batch_2lstmLayer_2clipGrad_epoch_17_acc_0.6820.pt", map_location=torch.device(device)))
     
     model.eval()
 
@@ -121,7 +121,7 @@ class StudentModel(nn.Module):
         self.embedding = torch.nn.Embedding.from_pretrained(vectors_store)
         self.n_hidden = n_hidden
         # recurrent layer
-        self.rnn = torch.nn.LSTM(input_size=vectors_store.size(1), hidden_size=n_hidden, num_layers=n_layer_lstm, batch_first=True, bidirectional=bidir)
+        self.lstm = torch.nn.LSTM(input_size=vectors_store.size(1), hidden_size=n_hidden, num_layers=n_layer_lstm, batch_first=True, bidirectional=bidir)
 
         # classification 
         if bidir:
@@ -130,8 +130,7 @@ class StudentModel(nn.Module):
         self.linear_output = torch.nn.Linear(n_hidden, 1)
 
         self.loss_fn = torch.nn.BCELoss()
-        self.device = device
-        
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
     def forward(
@@ -144,34 +143,28 @@ class StudentModel(nn.Module):
         
         embedding_out = self.embedding(X)
         # recurrent encoding
-        recurrent_out = self.rnn(embedding_out)[0]
-        # here we utilize the sequences length to retrieve the last token 
-        # output for each sequence
+        lstm_output = self.lstm(embedding_out)[0]
         
-        batch_size, seq_len, hidden_size = recurrent_out.shape
+        batch_size, seq_len, hidden_size = lstm_output.shape
 
-        # we flatten the recurrent output now I have a long sequence of batch x seq_len vectors 
-        flattened_out = recurrent_out.reshape(-1, hidden_size)
+        #sequence of batch x seq_len vectors 
+        flat_output = lstm_output.reshape(-1, hidden_size)
         
-        # tensor of the start offsets of each element in the batch
+        # start offsets of each element in the batch
         sequences_offsets = torch.arange(batch_size, device=self.device) * seq_len
         
         summary_vectors_indices_sent1 = self.get_indices_keyword(indices_keyword, sequences_offsets,0)
-        
-        #summary_vectors_indices_end_first_sent = self.get_indices_keyword(indices_keyword, sequences_offsets,1)
-
         summary_vectors_indices_sent2 = self.get_indices_keyword(indices_keyword, sequences_offsets,2)
         
-
-        # we retrieve the vecttor of the corrseponding states for the keyword given for each sentence.
+        # we retrieve the vector of the corrseponding states for the keyword given for each sentence.
           
-        summary_vectors_sent1 = flattened_out[summary_vectors_indices_sent1]
-        summary_vectors_sent2 = flattened_out[summary_vectors_indices_sent2]
+        summary_vectors_sent1 = flat_output[summary_vectors_indices_sent1]
+        summary_vectors_sent2 = flat_output[summary_vectors_indices_sent2]
         
-        # do the difference of these two vectors yet retrieved
+        # do the multiplication of these two vectors retrieved
         summary_vectors = summary_vectors_sent1 * summary_vectors_sent2
         
-        # feedforward pass on the summary
+        # feedforward MLP
         out = self.lin1(summary_vectors)
         out = F.leaky_relu(out)
         
