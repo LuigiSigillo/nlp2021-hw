@@ -169,3 +169,4 @@ model/mul_leakyrelu_0.1drop_194hidden_0.0001lr_40batch_2lstmLayer_1clipGrad_epoc
 model/diff_leakyrelu_0.15drop_98hidden_0.0001lr_40batch_2lstmLayer_4clipGrad_epoch_14_acc_0.6760-0.656.pt
 model/state_199.pt
 model/state_199.pt
+model/mul_leakyrelu_0.15drop_82hidden_0.0001lr_40batch_2lstmLayer_2clipGrad_epoch_17_acc_0.6820.pt
