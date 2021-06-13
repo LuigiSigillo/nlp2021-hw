@@ -188,3 +188,14 @@ nlp2021-hw2/data/laptops_dev.json
 nlp2021-hw2/data/laptops_train.json
 nlp2021-hw2/data/restaurants_dev.json
 nlp2021-hw2/data/restaurants_train.json
+nlp2021-hw2/hw2/app.py
+nlp2021-hw2/model/taskB.ckpt
+nlp2021-hw2/model/TASKB_model_b=False_f1_48.7000.pt
+nlp2021-hw2/model/model_A=False_f1_71.4000.pt
+nlp2021-hw2/model/taskA.ckpt
+nlp2021-hw2/model/taskCD.ckpt
+nlp2021-hw2/model/taskA_71.4.ckpt
+model_b=False_f1_0.8386.pt
+check_model_b=True_f1_0.5406.pt
+sigillo_1761017_hw2.zip
+TASKCD_model_b=True_f1_0.7456.pt
